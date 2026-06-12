@@ -22,7 +22,7 @@ def keep_alive():
     threading.Thread(target=run_web_server, daemon=True).start()
 # ----------------------------------------
 
-API_TOKEN = "8951596090:AAFeX3jht3Yjm_v26CgUsHmiz0MVK-2-nPg"
+API_TOKEN = "8951596090:AAH2CfioszIDBCoEs_PRGj1j-fu9R4nT1OA"
 db = {}
 
 # YouTube block bypass karne ke liye generic mobile user-agent aur options
