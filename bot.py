@@ -21,7 +21,6 @@ def keep_alive():
     threading.Thread(target=run_web_server, daemon=True).start()
 # ------------------------------------
 
-# Aapki fresh API Key
 API_TOKEN = "8951596090:AAH2CfioszIDBCoEs_PRGj1j-fu9R4nT1OA"
 user_sessions = {}
 
@@ -37,7 +36,7 @@ YTDL_OPTS = {
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 **Welcome to Downloader Bot!**\n\nMujhe YouTube, Spotify, ya Instagram link bhejien, main download kar dunga."
+        "✨ **Anmol's Premium Downloader Bot Active** ✨\n\nMujhe koi bhi YouTube, Spotify, ya Instagram link bhejien, main download kar dunga."
     )
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -49,8 +48,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     status_msg = await update.message.reply_text("🔍 **Link scan ho raha hai...**")
 
-    # Spotify link detect hote hi use query mark kar lo search ke liye
-    is_spotify = "spotify.com" in url.lower()
+    is_spotify = "spotify.com" in url.lower() or "spotify" in url.lower()
     if is_spotify:
         url = url.split('?')[0]
 
@@ -69,7 +67,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         keyboard = [
             [InlineKeyboardButton("🎬 Video (MP4)", callback_data="mp4")],
-            [InlineKeyboardButton("🎵 Audio (M4A/MP3)", callback_data="mp3")]
+            [InlineKeyboardButton("🎵 Audio (Premium M4A)", callback_data="mp3")]
         ]
         
         caption = f"📝 **Title:** `{title}`\n\nFormat select karein:"
@@ -101,26 +99,35 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     status_msg = await context.bot.send_message(chat_id=chat_id, text="⚙️ **Processing file...**")
 
-    # Audio aur video formats jo bina FFmpeg ke daudte hain
+    # PERMANENT FIXED NO-FFMPEG FORMATS
     if choice == "mp4":
+        # Direct single container mp4 video
         opts = {**YTDL_OPTS, 'format': 'best[ext=mp4]/best', 'outtmpl': '%(title)s.%(ext)s'}
     else:
-        opts = {**YTDL_OPTS, 'format': 'bestaudio/best', 'outtmpl': '%(title)s.%(ext)s'}
+        # Direct single container premium m4a audio (Sabse safe aur high quality audio bina FFmpeg ke)
+        opts = {**YTDL_OPTS, 'format': 'ba[ext=m4a]/bestaudio', 'outtmpl': '%(title)s.%(ext)s'}
         if is_spotify:
             opts['default_search'] = 'ytsearch'
 
     try:
         await status_msg.edit_text("📥 **Downloading from server...**")
         
-        # Stream download link logic
         download_target = f"ytsearch:{url}" if (is_spotify and choice == "mp3") else url
         
         with YoutubeDL(opts) as ydl:
             info = ydl.extract_info(download_target, download=True)
             if 'entries' in info and info['entries']:
                 info = info['entries'][0]
+            
+            # File extensions and paths calculation safely
             filename = ydl.prepare_filename(info)
-            title = info.get('title', 'Media')
+            # Agar file format native alag ho gaya toh fix extension
+            if not os.path.exists(filename):
+                base, _ = os.path.splitext(filename)
+                if os.path.exists(base + ".m4a"): filename = base + ".m4a"
+                elif os.path.exists(base + ".mp4"): filename = base + ".mp4"
+            
+            title = info.get('title', 'Media File')
 
         await status_msg.edit_text("📤 **Uploading to Telegram...**")
         
@@ -136,7 +143,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         print(f"Download Error: {e}")
-        await status_msg.edit_text("❌ **Download failed!** Server temporary busy tha. Ek baar dobara koshish karein.")
+        await status_msg.edit_text("❌ **Download failed!** Server ne format accept nahi kiya. Ek baar dobara koshish karein.")
     
     finally:
         if user_id in user_sessions: del user_sessions[user_id]
@@ -166,5 +173,3 @@ def main():
 if __name__ == '__main__':
     main()
     
-    
-        
