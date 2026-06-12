@@ -21,7 +21,7 @@ def keep_alive():
     threading.Thread(target=run_web_server, daemon=True).start()
 # ------------------------------------
 
-API_TOKEN = "8951596090:AAH2CfioszIDBCoEs_PRGj1j-fu9R4nT1OA"
+API_TOKEN = "8951596090:AAGTkiEELj5KwrT-0HaQS8QKa1wJ_7LzV2o"
 user_sessions = {}
 
 YTDL_OPTS = {
