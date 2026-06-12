@@ -21,11 +21,10 @@ def keep_alive():
     threading.Thread(target=run_web_server, daemon=True).start()
 # ------------------------------------
 
-# Aapki fresh normal API Key
+# Aapki fresh API Key
 API_TOKEN = "8951596090:AAH2CfioszIDBCoEs_PRGj1j-fu9R4nT1OA"
 user_sessions = {}
 
-# Ekdam normal aur basic options jo sabhi sites par work karte hain
 YTDL_OPTS = {
     'quiet': True,
     'no_warnings': True,
@@ -38,7 +37,7 @@ YTDL_OPTS = {
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 **Welcome to Downloader Bot!**\n\nMujhe koi bhi YouTube, Spotify, ya Instagram link bhejien, main download kar dunga."
+        "👋 **Welcome to Downloader Bot!**\n\nMujhe YouTube, Spotify, ya Instagram link bhejien, main download kar dunga."
     )
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -50,37 +49,36 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     status_msg = await update.message.reply_text("🔍 **Link scan ho raha hai...**")
 
+    # Spotify link detect hote hi use query mark kar lo search ke liye
+    is_spotify = "spotify.com" in url.lower()
+    if is_spotify:
+        url = url.split('?')[0]
+
     try:
-        # Normal extraction bina kisi extra masking restrictions ke
         with YoutubeDL(YTDL_OPTS) as ydl:
-            info = ydl.extract_info(url, download=False)
+            search_url = f"ytsearch:{url}" if is_spotify else url
+            info = ydl.extract_info(search_url, download=False)
+            
+            if 'entries' in info and info['entries']:
+                info = info['entries'][0]
+                
             title = info.get('title', 'Media File')
             thumbnail = info.get('thumbnail')
 
-        user_sessions[user_id] = {"url": url}
+        user_sessions[user_id] = {"url": url, "is_spotify": is_spotify}
         
         keyboard = [
             [InlineKeyboardButton("🎬 Video (MP4)", callback_data="mp4")],
-            [InlineKeyboardButton("🎵 Audio (MP3/M4A)", callback_data="mp3")]
+            [InlineKeyboardButton("🎵 Audio (M4A/MP3)", callback_data="mp3")]
         ]
         
         caption = f"📝 **Title:** `{title}`\n\nFormat select karein:"
         await status_msg.delete()
 
         if thumbnail:
-            await context.bot.send_photo(
-                chat_id=update.message.chat_id, 
-                photo=thumbnail, 
-                caption=caption, 
-                reply_markup=InlineKeyboardMarkup(keyboard), 
-                parse_mode="Markdown"
-            )
+            await context.bot.send_photo(chat_id=update.message.chat_id, photo=thumbnail, caption=caption, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
         else:
-            await update.message.reply_text(
-                caption, 
-                reply_markup=InlineKeyboardMarkup(keyboard), 
-                parse_mode="Markdown"
-            )
+            await update.message.reply_text(caption, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
     except Exception as e:
         print(f"Extraction Error: {e}")
@@ -97,23 +95,30 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     url = user_sessions[user_id]["url"]
+    is_spotify = user_sessions[user_id]["is_spotify"]
     chat_id = update.effective_chat.id
     await query.message.delete()
     
     status_msg = await context.bot.send_message(chat_id=chat_id, text="⚙️ **Processing file...**")
 
-    # Simple download system based on user choice
+    # Audio aur video formats jo bina FFmpeg ke daudte hain
     if choice == "mp4":
-        opts = {**YTDL_OPTS, 'format': 'best', 'outtmpl': '%(title)s.%(ext)s'}
+        opts = {**YTDL_OPTS, 'format': 'best[ext=mp4]/best', 'outtmpl': '%(title)s.%(ext)s'}
     else:
-        opts = {**YTDL_OPTS, 'format': 'bestaudio', 'outtmpl': '%(title)s.%(ext)s'}
+        opts = {**YTDL_OPTS, 'format': 'bestaudio/best', 'outtmpl': '%(title)s.%(ext)s'}
+        if is_spotify:
+            opts['default_search'] = 'ytsearch'
 
     try:
         await status_msg.edit_text("📥 **Downloading from server...**")
-        with open('download_running.lock', 'w') as f: f.write('1') # Simple single process lock
+        
+        # Stream download link logic
+        download_target = f"ytsearch:{url}" if (is_spotify and choice == "mp3") else url
         
         with YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+            info = ydl.extract_info(download_target, download=True)
+            if 'entries' in info and info['entries']:
+                info = info['entries'][0]
             filename = ydl.prepare_filename(info)
             title = info.get('title', 'Media')
 
@@ -131,10 +136,9 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         print(f"Download Error: {e}")
-        await status_msg.edit_text("❌ **Download failed!** Server temporary busy tha. Koshish karein ki thoda ruk kar link bhejien.")
+        await status_msg.edit_text("❌ **Download failed!** Server temporary busy tha. Ek baar dobara koshish karein.")
     
     finally:
-        if os.path.exists('download_running.lock'): os.remove('download_running.lock')
         if user_id in user_sessions: del user_sessions[user_id]
 
 async def main_async():
@@ -161,5 +165,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+    
     
         
