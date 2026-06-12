@@ -1,11 +1,16 @@
 import os
 import asyncio
 import threading
-import requests
 from flask import Flask
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 from yt_dlp import YoutubeDL
+
+# Safe import for requests to prevent any startup crash
+try:
+    import requests
+except ImportError:
+    requests = None
 
 # --- SIMPLE KEEP ALIVE FOR RENDER ---
 app = Flask('')
@@ -25,7 +30,6 @@ def keep_alive():
 API_TOKEN = "8951596090:AAH2CfioszIDBCoEs_PRGj1j-fu9R4nT1OA"
 user_sessions = {}
 
-# Enhanced options to mimic an authentic mobile browser and bypass IP block
 YTDL_OPTS = {
     'quiet': True,
     'no_warnings': True,
@@ -41,7 +45,7 @@ YTDL_OPTS = {
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "⚡ **Anmol's Premium Downloader Bot Active!**\n\nMujhe Instagram, YouTube, ya Spotify ka koi bhi link bhejien, main bina kisi block ke download karne ki koshish karunga."
+        "⚡ **Anmol's Premium Downloader Bot Active!**\n\nMujhe Instagram, YouTube, ya Spotify ka koi bhi link bhejien, main download kar dunga."
     )
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -57,7 +61,6 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         url = url.split('?')[0]
 
     try:
-        # Check if URL can be scanned directly or requires search fallback
         with YoutubeDL(YTDL_OPTS) as ydl:
             search_url = f"ytsearch1:{url}" if "spotify" in url.lower() else url
             info = ydl.extract_info(search_url, download=False)
@@ -85,13 +88,12 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         print(f"Scan Error: {e}")
-        # Secondary fallback method using an external public API if Render IP is completely blocked by YT
         if "spotify" in url.lower() or "youtube" in url.lower():
             user_sessions[user_id] = {"url": url, "title": "Premium Track"}
             keyboard = [[InlineKeyboardButton("🎵 Download Premium Audio", callback_data="mp3")]]
-            await status_msg.edit_text("🎵 YouTube/Spotify link detected! Direct high-speed download format select karein:", reply_markup=InlineKeyboardMarkup(keyboard))
+            await status_msg.edit_text("🎵 YouTube/Spotify link detected! High-speed download format select karein:", reply_markup=InlineKeyboardMarkup(keyboard))
         else:
-            await status_msg.edit_text("❌ **Link scan nahi ho paya.**\nServer busy hai ya IP restricted hai. Ek baar dobara link bhejien.")
+            await status_msg.edit_text("❌ **Link scan nahi ho paya.**\nEk baar dobara link bhejien.")
 
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -110,7 +112,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     status_msg = await context.bot.send_message(chat_id=chat_id, text="⚙️ **Downloading...**")
 
-    # Anti-FFmpeg independent configurations
     if choice == "mp4":
         opts = {**YTDL_OPTS, 'format': 'best[ext=mp4]/best', 'outtmpl': '%(id)s.%(ext)s'}
     else:
@@ -134,10 +135,9 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if os.path.exists(base + ".m4a"): filename = base + ".m4a"
                     elif os.path.exists(base + ".mp4"): filename = base + ".mp4"
         except Exception as yt_err:
-            print(f"Primary YT-DLP engine blocked, using API fallback: {yt_err}")
-            # External cloud api bypass system if local Render IP fails
-            if choice == "mp3":
-                await status_msg.edit_text("🚀 **Bypassing Server restriction... Fetching High Quality Audio...**")
+            print(f"Primary engine blocked: {yt_err}")
+            if choice == "mp3" and requests is not None:
+                await status_msg.edit_text("🚀 **Bypassing Server restriction... Fetching Audio...**")
                 api_url = f"https://api.vreden.web.id/api/ytmp3?url={url}" if "youtube" in url.lower() else f"https://api.vreden.web.id/api/spotify?url={url}"
                 res = requests.get(api_url).json()
                 download_link = res.get("result", {}).get("download") or res.get("result", {}).get("music")
@@ -159,11 +159,11 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(filename)
             await status_msg.delete()
         else:
-            raise Exception("File generation failed on all layers.")
+            raise Exception("File extraction failed.")
 
     except Exception as e:
-        print(f"Final Execution Error: {e}")
-        await status_msg.edit_text("❌ **Download failed!** Server ne temporary process block kiya hai. Koshish karein ki link dobara bhejien ya Instagram link try karein.")
+        print(f"Execution Error: {e}")
+        await status_msg.edit_text("❌ **Download failed!** Server ne response nahi kiya. Ek baar dobara koshish karein.")
     
     finally:
         if user_id in user_sessions: del user_sessions[user_id]
