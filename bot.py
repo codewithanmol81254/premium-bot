@@ -25,6 +25,17 @@ def keep_alive():
 API_TOKEN = "8951596090:AAFeX3jht3Yjm_v26CgUsHmiz0MVK-2-nPg"
 db = {}
 
+# YouTube block bypass karne ke liye generic mobile user-agent aur options
+YTDL_COMMON_OPTS = {
+    'quiet': True,
+    'no_warnings': True,
+    'http_headers': {
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+    }
+}
+
 def format_duration(seconds):
     if not seconds: return "Unknown"
     mins = int(seconds) // 60
@@ -56,7 +67,8 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        with YoutubeDL({'skip_download': True, 'quiet': True}) as ydl:
+        opts = {**YTDL_COMMON_OPTS, 'skip_download': True}
+        with YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
             title = info.get('title', 'Premium Media Asset')
             thumbnail = info.get('thumbnail') or info.get('thumbnails', [{}])[0].get('url')
@@ -77,7 +89,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(caption_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     except Exception as e:
-        await status_msg.edit_text(f"❌ **Link scan nahi ho paya.**\nError: {str(e)}")
+        await status_msg.edit_text(f"❌ **Link scan nahi ho paya.**\nError: IP temporary restricted by provider. Please try again in a moment or use another link.")
 
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -98,9 +110,10 @@ async def start_download(update: Update, context: ContextTypes.DEFAULT_TYPE, use
     chat_id = update.effective_chat.id
 
     if choice == "mp4":
-        ydl_opts = {'format': 'best[ext=mp4]/best', 'outtmpl': '%(title)s.%(ext)s', 'restrictfilenames': True}
+        ydl_opts = {**YTDL_COMMON_OPTS, 'format': 'best[ext=mp4]/best', 'outtmpl': '%(title)s.%(ext)s', 'restrictfilenames': True}
     else:
         ydl_opts = {
+            **YTDL_COMMON_OPTS,
             'format': 'bestaudio[ext=m4a]/bestaudio/best',
             'outtmpl': '%(title)s.%(ext)s',
             'restrictfilenames': True,
@@ -130,7 +143,7 @@ async def start_download(update: Update, context: ContextTypes.DEFAULT_TYPE, use
         if os.path.exists(filename): os.remove(filename)
         await context.bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
     except Exception as e:
-        await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"❌ **Download failed!**\nError: {str(e)}")
+        await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"❌ **Download failed!**\nServer is busy. Please re-send the link in a few seconds.")
 
     if user_id in db: del db[user_id]
 
@@ -141,12 +154,10 @@ async def main_async():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
     application.add_handler(CallbackQueryHandler(button_click))
     
-    # Python 3.14 ke liye loop initialize karke run karenge
     await application.initialize()
     await application.start()
     await application.updater.start_polling()
     
-    # Server ko active rakhne ke liye infinite loop
     while True:
         await asyncio.sleep(3600)
 
@@ -161,4 +172,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+    
     
