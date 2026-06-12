@@ -1,4 +1,3 @@
-pyTelegramBotAPI
 python-telegram-bot==21.1.1
 yt-dlp
-Flask
+flask
