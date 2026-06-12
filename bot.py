@@ -1,6 +1,7 @@
 import os
 import asyncio
 import threading
+import requests
 from flask import Flask
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
@@ -11,7 +12,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is Running Perfectly!"
+    return "Anmol Bot is Running Heavily!"
 
 def run_web_server():
     port = int(os.environ.get('PORT', 8080))
@@ -21,40 +22,44 @@ def keep_alive():
     threading.Thread(target=run_web_server, daemon=True).start()
 # ------------------------------------
 
-API_TOKEN = "8951596090:AAGTkiEELj5KwrT-0HaQS8QKa1wJ_7LzV2o"
+API_TOKEN = "8951596090:AAH2CfioszIDBCoEs_PRGj1j-fu9R4nT1OA"
 user_sessions = {}
 
+# Enhanced options to mimic an authentic mobile browser and bypass IP block
 YTDL_OPTS = {
     'quiet': True,
     'no_warnings': True,
     'geo_bypass': True,
     'nocheckcertificate': True,
+    'extractor_args': {'youtube': {'player_client': ['android', 'web_embedded']}},
     'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
     }
 }
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "✨ **Anmol's Premium Downloader Bot Active** ✨\n\nMujhe koi bhi YouTube, Spotify, ya Instagram link bhejien, main download kar dunga."
+        "⚡ **Anmol's Premium Downloader Bot Active!**\n\nMujhe Instagram, YouTube, ya Spotify ka koi bhi link bhejien, main bina kisi block ke download karne ki koshish karunga."
     )
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     if not url.startswith("http"):
-        await update.message.reply_text("⚠️ Please sahi URL bhejien.")
+        await update.message.reply_text("⚠️ Please sahi URL bhejien bhai.")
         return
 
     user_id = update.message.from_user.id
     status_msg = await update.message.reply_text("🔍 **Link scan ho raha hai...**")
 
-    is_spotify = "spotify.com" in url.lower() or "spotify" in url.lower()
-    if is_spotify:
+    if "spotify" in url.lower():
         url = url.split('?')[0]
 
     try:
+        # Check if URL can be scanned directly or requires search fallback
         with YoutubeDL(YTDL_OPTS) as ydl:
-            search_url = f"ytsearch:{url}" if is_spotify else url
+            search_url = f"ytsearch1:{url}" if "spotify" in url.lower() else url
             info = ydl.extract_info(search_url, download=False)
             
             if 'entries' in info and info['entries']:
@@ -63,7 +68,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title = info.get('title', 'Media File')
             thumbnail = info.get('thumbnail')
 
-        user_sessions[user_id] = {"url": url, "is_spotify": is_spotify}
+        user_sessions[user_id] = {"url": url, "title": title}
         
         keyboard = [
             [InlineKeyboardButton("🎬 Video (MP4)", callback_data="mp4")],
@@ -79,8 +84,14 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(caption, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
     except Exception as e:
-        print(f"Extraction Error: {e}")
-        await status_msg.edit_text("❌ **Link scan nahi ho paya.**\nEk baar link check karke dobara bhejien.")
+        print(f"Scan Error: {e}")
+        # Secondary fallback method using an external public API if Render IP is completely blocked by YT
+        if "spotify" in url.lower() or "youtube" in url.lower():
+            user_sessions[user_id] = {"url": url, "title": "Premium Track"}
+            keyboard = [[InlineKeyboardButton("🎵 Download Premium Audio", callback_data="mp3")]]
+            await status_msg.edit_text("🎵 YouTube/Spotify link detected! Direct high-speed download format select karein:", reply_markup=InlineKeyboardMarkup(keyboard))
+        else:
+            await status_msg.edit_text("❌ **Link scan nahi ho paya.**\nServer busy hai ya IP restricted hai. Ek baar dobara link bhejien.")
 
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -93,57 +104,66 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     url = user_sessions[user_id]["url"]
-    is_spotify = user_sessions[user_id]["is_spotify"]
+    saved_title = user_sessions[user_id]["title"]
     chat_id = update.effective_chat.id
     await query.message.delete()
     
-    status_msg = await context.bot.send_message(chat_id=chat_id, text="⚙️ **Processing file...**")
+    status_msg = await context.bot.send_message(chat_id=chat_id, text="⚙️ **Downloading...**")
 
-    # PERMANENT FIXED NO-FFMPEG FORMATS
+    # Anti-FFmpeg independent configurations
     if choice == "mp4":
-        # Direct single container mp4 video
-        opts = {**YTDL_OPTS, 'format': 'best[ext=mp4]/best', 'outtmpl': '%(title)s.%(ext)s'}
+        opts = {**YTDL_OPTS, 'format': 'best[ext=mp4]/best', 'outtmpl': '%(id)s.%(ext)s'}
     else:
-        # Direct single container premium m4a audio (Sabse safe aur high quality audio bina FFmpeg ke)
-        opts = {**YTDL_OPTS, 'format': 'ba[ext=m4a]/bestaudio', 'outtmpl': '%(title)s.%(ext)s'}
-        if is_spotify:
-            opts['default_search'] = 'ytsearch'
+        opts = {**YTDL_OPTS, 'format': 'ba[ext=m4a]/bestaudio/best', 'outtmpl': '%(id)s.%(ext)s'}
+        if "spotify" in url.lower():
+            opts['default_search'] = 'ytsearch1'
 
     try:
-        await status_msg.edit_text("📥 **Downloading from server...**")
+        download_target = f"ytsearch1:{url}" if ("spotify" in url.lower() and choice == "mp3") else url
+        filename = None
         
-        download_target = f"ytsearch:{url}" if (is_spotify and choice == "mp3") else url
-        
-        with YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(download_target, download=True)
-            if 'entries' in info and info['entries']:
-                info = info['entries'][0]
-            
-            # File extensions and paths calculation safely
-            filename = ydl.prepare_filename(info)
-            # Agar file format native alag ho gaya toh fix extension
-            if not os.path.exists(filename):
-                base, _ = os.path.splitext(filename)
-                if os.path.exists(base + ".m4a"): filename = base + ".m4a"
-                elif os.path.exists(base + ".mp4"): filename = base + ".mp4"
-            
-            title = info.get('title', 'Media File')
+        try:
+            with YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(download_target, download=True)
+                if 'entries' in info and info['entries']:
+                    info = info['entries'][0]
+                
+                filename = ydl.prepare_filename(info)
+                if not os.path.exists(filename):
+                    base, _ = os.path.splitext(filename)
+                    if os.path.exists(base + ".m4a"): filename = base + ".m4a"
+                    elif os.path.exists(base + ".mp4"): filename = base + ".mp4"
+        except Exception as yt_err:
+            print(f"Primary YT-DLP engine blocked, using API fallback: {yt_err}")
+            # External cloud api bypass system if local Render IP fails
+            if choice == "mp3":
+                await status_msg.edit_text("🚀 **Bypassing Server restriction... Fetching High Quality Audio...**")
+                api_url = f"https://api.vreden.web.id/api/ytmp3?url={url}" if "youtube" in url.lower() else f"https://api.vreden.web.id/api/spotify?url={url}"
+                res = requests.get(api_url).json()
+                download_link = res.get("result", {}).get("download") or res.get("result", {}).get("music")
+                if download_link:
+                    filename = f"track_{user_id}.mp3"
+                    with requests.get(download_link, stream=True) as r:
+                        with open(filename, 'wb') as f:
+                            for chunk in r.iter_content(chunk_size=8192):
+                                f.write(chunk)
 
-        await status_msg.edit_text("📤 **Uploading to Telegram...**")
-        
-        with open(filename, 'rb') as file_data:
-            if choice == "mp4":
-                await context.bot.send_video(chat_id=chat_id, video=file_data, caption=f"🎬 *{title}*")
-            else:
-                await context.bot.send_audio(chat_id=chat_id, audio=file_data, title=title)
-
-        if os.path.exists(filename): 
+        if filename and os.path.exists(filename):
+            await status_msg.edit_text("📤 **Uploading to Telegram...**")
+            with open(filename, 'rb') as file_data:
+                if choice == "mp4" and filename.endswith(".mp4"):
+                    await context.bot.send_video(chat_id=chat_id, video=file_data, caption=f"🎬 *{saved_title}*")
+                else:
+                    await context.bot.send_audio(chat_id=chat_id, audio=file_data, title=saved_title)
+            
             os.remove(filename)
-        await status_msg.delete()
+            await status_msg.delete()
+        else:
+            raise Exception("File generation failed on all layers.")
 
     except Exception as e:
-        print(f"Download Error: {e}")
-        await status_msg.edit_text("❌ **Download failed!** Server ne format accept nahi kiya. Ek baar dobara koshish karein.")
+        print(f"Final Execution Error: {e}")
+        await status_msg.edit_text("❌ **Download failed!** Server ne temporary process block kiya hai. Koshish karein ki link dobara bhejien ya Instagram link try karein.")
     
     finally:
         if user_id in user_sessions: del user_sessions[user_id]
