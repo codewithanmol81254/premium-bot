@@ -38,19 +38,18 @@ def keep_alive():
     threading.Thread(target=run_web_server, daemon=True).start()
 # ------------------------------------
 
-# !!! AAPKA FRESH NEW TELEGRAM BOT TOKEN !!!
 API_TOKEN = "8951596090:AAGTkiEELj5KwrT-0HaQS8QKa1wJ_7LzV2o"
 user_sessions = {}
 
-# Enhanced options to mimic an authentic mobile browser and bypass IP block
+# Ultra-mimic client headers to bypass strict IP blocks
 YTDL_OPTS = {
     'quiet': True,
     'no_warnings': True,
     'geo_bypass': True,
     'nocheckcertificate': True,
-    'extractor_args': {'youtube': {'player_client': ['android', 'web_embedded']}},
+    'extractor_args': {'youtube': {'player_client': ['ios', 'android', 'web_embedded']}},
     'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.5',
     }
@@ -73,7 +72,12 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "spotify" in url.lower():
         url = url.split('?')[0]
 
+    title = "Premium Track"
+    thumbnail = None
+    is_scan_successful = False
+
     try:
+        # Standard Scan Attempt
         with YoutubeDL(YTDL_OPTS) as ydl:
             search_url = f"ytsearch1:{url}" if "spotify" in url.lower() else url
             info = ydl.extract_info(search_url, download=False)
@@ -83,30 +87,39 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
             title = info.get('title', 'Media File')
             thumbnail = info.get('thumbnail')
+            is_scan_successful = True
 
+    except Exception as e:
+        print(f"Scan Error (Bypassing to Fallback System): {e}")
+        # Agar Render IP block hai, toh safe fallback parameters set karenge
+        if "youtube.com" in url.lower() or "youtu.be" in url.lower():
+            title = "YouTube Video/Audio"
+            is_scan_successful = True
+        elif "spotify" in url.lower():
+            title = "Spotify Premium Track"
+            is_scan_successful = True
+
+    if is_scan_successful:
         user_sessions[user_id] = {"url": url, "title": title}
         
         keyboard = [
             [InlineKeyboardButton("🎬 Video (MP4)", callback_data="mp4")],
-            [InlineKeyboardButton("🎵 Audio (Premium M4A)", callback_data="mp3")]
+            [InlineKeyboardButton("🎵 Audio (Premium MP3)", callback_data="mp3")]
         ]
         
         caption = f"📝 **Title:** `{title}`\n\nFormat select karein:"
         await status_msg.delete()
 
         if thumbnail:
-            await context.bot.send_photo(chat_id=update.message.chat_id, photo=thumbnail, caption=caption, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+            try:
+                await context.bot.send_photo(chat_id=update.message.chat_id, photo=thumbnail, caption=caption, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+            except Exception:
+                await update.message.reply_text(caption, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
         else:
             await update.message.reply_text(caption, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-
-    except Exception as e:
-        print(f"Scan Error: {e}")
-        if "spotify" in url.lower() or "youtube" in url.lower():
-            user_sessions[user_id] = {"url": url, "title": "Premium Track"}
-            keyboard = [[InlineKeyboardButton("🎵 Download Premium Audio", callback_data="mp3")]]
-            await status_msg.edit_text("🎵 YouTube/Spotify link detected! Direct high-speed download format select karein:", reply_markup=InlineKeyboardMarkup(keyboard))
-        else:
-            await status_msg.edit_text("❌ **Link scan nahi ho paya.**\nServer busy hai ya IP restricted hai. Ek baar dobara link bhejien.")
+    else:
+        # Agar bilkul hi unknown link hai jo fail ho gaya
+        await status_msg.edit_text("❌ **Link scan nahi ho paya.**\nServer busy hai ya IP restricted hai. Ek baar dobara link bhejien.")
 
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -141,11 +154,12 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if "spotify" in url.lower():
             opts['default_search'] = 'ytsearch1'
 
+    filename = None
     try:
         download_target = f"ytsearch1:{url}" if ("spotify" in url.lower() and choice == "mp3") else url
-        filename = None
         
         try:
+            # Primary execution block
             with YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(download_target, download=True)
                 if 'entries' in info and info['entries']:
@@ -164,14 +178,22 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     filename = raw_filename
                     
         except Exception as yt_err:
-            print(f"Primary YT-DLP engine blocked, using API fallback: {yt_err}")
-            if choice == "mp3" and requests is not None:
-                await status_msg.edit_text("🚀 **Bypassing Server restriction... Fetching High Quality Audio...**")
-                api_url = f"https://api.vreden.web.id/api/ytmp3?url={url}" if "youtube" in url.lower() else f"https://api.vreden.web.id/api/spotify?url={url}"
+            print(f"Primary YT-DLP engine blocked, triggering API fallback: {yt_err}")
+            # Dynamic network bypass layer if local Render IP fails completely
+            if requests is not None:
+                await status_msg.edit_text("🚀 **Bypassing Server restriction... Fetching Media via Cloud Proxy...**")
+                
+                if choice == "mp3":
+                    api_url = f"https://api.vreden.web.id/api/ytmp3?url={url}" if ("youtube" in url.lower() or "youtu" in url.lower()) else f"https://api.vreden.web.id/api/spotify?url={url}"
+                else:
+                    # Video fallback link
+                    api_url = f"https://api.vreden.web.id/api/ytmp4?url={url}"
+                    
                 res = requests.get(api_url).json()
-                download_link = res.get("result", {}).get("download") or res.get("result", {}).get("music")
+                download_link = res.get("result", {}).get("download") or res.get("result", {}).get("music") or res.get("result", {}).get("video")
+                
                 if download_link:
-                    filename = f"track_{user_id}.mp3"
+                    filename = f"download_{user_id}.mp4" if choice == "mp4" else f"track_{user_id}.mp3"
                     with requests.get(download_link, stream=True) as r:
                         with open(filename, 'wb') as f:
                             for chunk in r.iter_content(chunk_size=8192):
@@ -180,7 +202,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if filename and os.path.exists(filename):
             await status_msg.edit_text("📤 **Uploading to Telegram...**")
             with open(filename, 'rb') as file_data:
-                if choice == "mp4" and filename.endswith(".mp4"):
+                if choice == "mp4":
                     await context.bot.send_video(chat_id=chat_id, video=file_data, caption=f"🎬 *{saved_title}*")
                 else:
                     await context.bot.send_audio(chat_id=chat_id, audio=file_data, title=saved_title)
@@ -188,11 +210,11 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(filename)
             await status_msg.delete()
         else:
-            raise Exception("File generation failed on all layers.")
+            raise Exception("File generation completely failed on all infrastructure layers.")
 
     except Exception as e:
         print(f"Final Execution Error: {e}")
-        await status_msg.edit_text("❌ **Download failed!** Server ne temporary process block kiya hai. Koshish karein ki link dobara bhejien ya Instagram link try karein.")
+        await status_msg.edit_text("❌ **Download failed!** YouTube/Server restrictions are too tight right now. Koshish karein ki thodi der baad link dobara bhejien.")
     
     finally:
         if user_id in user_sessions: del user_sessions[user_id]
@@ -222,4 +244,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
