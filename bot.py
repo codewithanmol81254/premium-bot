@@ -41,7 +41,6 @@ def keep_alive():
 API_TOKEN = "8951596090:AAGTkiEELj5KwrT-0HaQS8QKa1wJ_7LzV2o"
 user_sessions = {}
 
-# Ultra-mimic client headers to bypass strict IP blocks
 YTDL_OPTS = {
     'quiet': True,
     'no_warnings': True,
@@ -77,7 +76,6 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_scan_successful = False
 
     try:
-        # Standard Scan Attempt
         with YoutubeDL(YTDL_OPTS) as ydl:
             search_url = f"ytsearch1:{url}" if "spotify" in url.lower() else url
             info = ydl.extract_info(search_url, download=False)
@@ -90,10 +88,9 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             is_scan_successful = True
 
     except Exception as e:
-        print(f"Scan Error (Bypassing to Fallback System): {e}")
-        # Agar Render IP block hai, toh safe fallback parameters set karenge
+        print(f"Scan Bypass triggered: {e}")
         if "youtube.com" in url.lower() or "youtu.be" in url.lower():
-            title = "YouTube Video/Audio"
+            title = "YouTube Premium Media"
             is_scan_successful = True
         elif "spotify" in url.lower():
             title = "Spotify Premium Track"
@@ -118,8 +115,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(caption, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     else:
-        # Agar bilkul hi unknown link hai jo fail ho gaya
-        await status_msg.edit_text("❌ **Link scan nahi ho paya.**\nServer busy hai ya IP restricted hai. Ek baar dobara link bhejien.")
+        await status_msg.edit_text("❌ **Link scan nahi ho paya.**\nEk baar dobara bhejien ya check karein.")
 
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -155,51 +151,83 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             opts['default_search'] = 'ytsearch1'
 
     filename = None
+    download_success = False
+
+    # --- LAYER 1: CORE LOCAL ENGINE (YT-DLP) ---
     try:
         download_target = f"ytsearch1:{url}" if ("spotify" in url.lower() and choice == "mp3") else url
-        
-        try:
-            # Primary execution block
-            with YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(download_target, download=True)
-                if 'entries' in info and info['entries']:
-                    info = info['entries'][0]
+        with YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(download_target, download=True)
+            if 'entries' in info and info['entries']:
+                info = info['entries'][0]
+            
+            raw_filename = ydl.prepare_filename(info)
+            base, _ = os.path.splitext(raw_filename)
+            
+            for ext in ['.mp3', '.m4a', '.mp4', '.webm', '.opus']:
+                test_path = base + ext
+                if os.path.exists(test_path):
+                    filename = test_path
+                    break
+            if not filename and os.path.exists(raw_filename):
+                filename = raw_filename
                 
-                raw_filename = ydl.prepare_filename(info)
-                base, _ = os.path.splitext(raw_filename)
-                
-                for ext in ['.mp3', '.m4a', '.mp4', '.webm', '.opus']:
-                    test_path = base + ext
-                    if os.path.exists(test_path):
-                        filename = test_path
-                        break
-                
-                if not filename and os.path.exists(raw_filename):
-                    filename = raw_filename
-                    
-        except Exception as yt_err:
-            print(f"Primary YT-DLP engine blocked, triggering API fallback: {yt_err}")
-            # Dynamic network bypass layer if local Render IP fails completely
-            if requests is not None:
-                await status_msg.edit_text("🚀 **Bypassing Server restriction... Fetching Media via Cloud Proxy...**")
-                
-                if choice == "mp3":
-                    api_url = f"https://api.vreden.web.id/api/ytmp3?url={url}" if ("youtube" in url.lower() or "youtu" in url.lower()) else f"https://api.vreden.web.id/api/spotify?url={url}"
-                else:
-                    # Video fallback link
-                    api_url = f"https://api.vreden.web.id/api/ytmp4?url={url}"
-                    
-                res = requests.get(api_url).json()
-                download_link = res.get("result", {}).get("download") or res.get("result", {}).get("music") or res.get("result", {}).get("video")
-                
-                if download_link:
-                    filename = f"download_{user_id}.mp4" if choice == "mp4" else f"track_{user_id}.mp3"
-                    with requests.get(download_link, stream=True) as r:
-                        with open(filename, 'wb') as f:
-                            for chunk in r.iter_content(chunk_size=8192):
-                                f.write(chunk)
-
         if filename and os.path.exists(filename):
+            download_success = True
+    except Exception as e:
+        print(f"Layer 1 Fail (Local Engine Blocked): {e}")
+
+    # --- LAYER 2: BACKUP CLOUD API ROUTE A (Vreden API) ---
+    if not download_success and requests is not None:
+        try:
+            await status_msg.edit_text("🚀 **Bypassing Server restriction... Trying Route A...**")
+            if choice == "mp3":
+                api_url = f"https://api.vreden.web.id/api/ytmp3?url={url}" if ("youtube" in url.lower() or "youtu" in url.lower()) else f"https://api.vreden.web.id/api/spotify?url={url}"
+            else:
+                api_url = f"https://api.vreden.web.id/api/ytmp4?url={url}"
+
+            res = requests.get(api_url, timeout=15).json()
+            download_link = res.get("result", {}).get("download") or res.get("result", {}).get("music") or res.get("result", {}).get("video")
+            
+            if download_link:
+                filename = f"download_a_{user_id}.mp4" if choice == "mp4" else f"track_a_{user_id}.mp3"
+                with requests.get(download_link, stream=True) as r:
+                    with open(filename, 'wb') as f:
+                        for chunk in r.iter_content(chunk_size=8112):
+                            f.write(chunk)
+                if os.path.exists(filename):
+                    download_success = True
+        except Exception as e:
+            print(f"Layer 2 Fail (Route A Down): {e}")
+
+    # --- LAYER 3: BACKUP CLOUD API ROUTE B (Ayna/Decoded Mirror API Bypass) ---
+    if not download_success and requests is not None:
+        try:
+            await status_msg.edit_text("⚡ **Route A Busy. Switching to Ultra Route B...**")
+            # Using an alternate resilient mirror endpoint architecture
+            if choice == "mp3":
+                api_url = f"https://api.sandipbaruwal.codes/spotify?url={url}" if "spotify" in url.lower() else f"https://api.deku.poscloud.tech/youtube?url={url}&type=audio"
+            else:
+                api_url = f"https://api.deku.poscloud.tech/youtube?url={url}&type=video"
+
+            res = requests.get(api_url, timeout=15).json()
+            # Dynamic extraction based on standard response formats
+            download_link = res.get("download") or res.get("result") or res.get("url")
+            
+            if download_link:
+                filename = f"download_b_{user_id}.mp4" if choice == "mp4" else f"track_b_{user_id}.mp3"
+                with requests.get(download_link, stream=True) as r:
+                    with open(filename, 'wb') as f:
+                        for chunk in r.iter_content(chunk_size=8112):
+                            f.write(chunk)
+                if os.path.exists(filename):
+                    download_success = True
+        except Exception as e:
+            print(f"Layer 3 Fail (Route B Down): {e}")
+
+    # --- FINAL UPLOAD LOGIC ---
+    try:
+        if download_success and filename and os.path.exists(filename):
             await status_msg.edit_text("📤 **Uploading to Telegram...**")
             with open(filename, 'rb') as file_data:
                 if choice == "mp4":
@@ -210,11 +238,10 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(filename)
             await status_msg.delete()
         else:
-            raise Exception("File generation completely failed on all infrastructure layers.")
-
+            raise Exception("All download layers exhausted and failed.")
     except Exception as e:
-        print(f"Final Execution Error: {e}")
-        await status_msg.edit_text("❌ **Download failed!** YouTube/Server restrictions are too tight right now. Koshish karein ki thodi der baad link dobara bhejien.")
+        print(f"Final Send Error: {e}")
+        await status_msg.edit_text("❌ **All Routes Busy!** YouTube strict block lagaya hai. Koshish karein ki thodi der baad link bhejien ya koi aur link try karein.")
     
     finally:
         if user_id in user_sessions: del user_sessions[user_id]
@@ -244,3 +271,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    
