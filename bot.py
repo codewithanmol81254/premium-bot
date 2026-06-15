@@ -6,35 +6,32 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 from yt_dlp import YoutubeDL
 
-# Network requests tool for cloud proxy bypass
+# Network requests setup for proxy bypass
 try:
     import requests
 except ImportError:
     requests = None
 
-# --- WEB SERVER FOR RENDER 24/7 KEEP ALIVE ---
+# --- WEB SERVER CONFIGURATION FOR RENDER 24/7 ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Anmol's Bot is Running 24/7 Heavily!"
+    return "Anmol's Multi-Bypass Bot is running 24/7 stable!"
 
-def run_web_server():
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+@app.route('/health')
+def health():
+    return "OK", 200
 
-def keep_alive():
-    threading.Thread(target=run_web_server, daemon=True).start()
-# ---------------------------------------------
-
+# --- BOT CONFIGURATION ---
 API_TOKEN = "8951596090:AAFeX3jht3Yjm_v26CgUsHmiz0MVK-2-nPg"
 db = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 **Welcome, Anmol Bhai!**\n\n"
-        "⚡ **Render 24/7 Cloud Engine Active!**\n"
-        "Mujhe kisi bhi video/music ka link bhejein, cloud bypass system se instant download hoga."
+        "👋 **Welcome Back, Anmol Bhai!**\n\n"
+        "⚡ **Render Premium Engine Active 24/7!**\n"
+        "Mujhe kisi bhi video/music ka link bhejein, network block bypass systems se instant processing hogi."
     )
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -99,6 +96,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'format': 'best[ext=mp4]/best' if choice == "mp4" else 'bestaudio/best',
             'outtmpl': f'local_{user_id}.%(ext)s',
             'restrictfilenames': True,
+            'quiet': True
         }
         if choice == "mp3":
             ydl_opts['postprocessors'] = [{
@@ -122,7 +120,10 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- UPLOAD AND CLEANUP LAYER ---
     try:
         if download_success and filename and os.path.exists(filename):
-            await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text="📤 Uploading to Telegram...")
+            try:
+                await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text="📤 Uploading to Telegram...")
+            except Exception:
+                pass
             
             with open(filename, 'rb') as file_asset:
                 if choice == "mp4":
@@ -132,28 +133,44 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             if os.path.exists(filename):
                 os.remove(filename)
-            await context.bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
+            except Exception:
+                pass
         else:
-            raise Exception("All data routing infrastructure failed on Render network.")
+            raise Exception("All download routing paths exhausted.")
             
     except Exception as final_err:
-        await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text="❌ Server completely busy or link restricted. Please thodi der baad dobara koshish karein.")
+        try:
+            await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text="❌ Server completely busy or link restricted. Please thodi der baad dobara koshish karein.")
+        except Exception:
+            await context.bot.send_message(chat_id=chat_id, text="❌ Server completely busy or link restricted. Please thodi der baad dobara koshish karein.")
 
     if user_id in db:
         del db[user_id]
 
-def main():
-    keep_alive() # Starts background web server for Render 24/7 webcheck
-    print("🚀 Starting Bot Framework on Render Cloud...")
+# Telegram Bot loop ko alag thread me chalane ka engine
+def run_bot():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    print("🚀 Initializing Telegram Polling Network...")
     application = Application.builder().token(API_TOKEN).read_timeout(60).write_timeout(120).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
     application.add_handler(CallbackQueryHandler(button_click))
 
-    print("✅ System Online. Polling active.")
-    application.run_polling()
+    print("✅ Telegram Polling Engine Started Successfully.")
+    application.run_polling(close_loop=False)
 
 if __name__ == '__main__':
-    main()
+    # Bot ko background thread me start karein
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+    
+    # Main process me Flask server ko run karein taaki Render ise continuously live rakhe
+    port = int(os.environ.get('PORT', 8080))
+    print(f"⚙️ Starting Main Flask Web Server on port {port}...")
+    app.run(host='0.0.0.0', port=port)
     
