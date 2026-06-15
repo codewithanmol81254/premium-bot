@@ -24,7 +24,7 @@ def health():
     return "OK", 200
 
 # --- BOT CONFIGURATION ---
-API_TOKEN = "8951596090:AAFeX3jht3Yjm_v26CgUsHmiz0MVK-2-nPg"
+API_TOKEN = "8951596090:AAEfuOu7a172jkgNCOrqhLsCfMtJwcy9A34"
 db = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
