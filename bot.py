@@ -1,37 +1,44 @@
 import os
 import asyncio
-import threading
-from flask import Flask
+from flask import Flask, request
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 from yt_dlp import YoutubeDL
 
-# Network requests setup for proxy bypass
 try:
     import requests
 except ImportError:
     requests = None
 
-# --- WEB SERVER CONFIGURATION FOR RENDER 24/7 ---
+# --- FLASK WEB SERVER ENGINE ---
 app = Flask('')
+application = None
 
 @app.route('/')
 def home():
-    return "Anmol's Multi-Bypass Bot is running 24/7 stable!"
+    return "Anmol's Telegram Webhook Engine is 24/7 Active!"
 
-@app.route('/health')
-def health():
+# Telegram isme direct message bhejega
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    if application:
+        update = Update.de_json(request.get_json(force=True), application.bot)
+        # Background task me process karne ke liye taaki Flask jaldi response kare
+        asyncio.run_coroutine_threadsafe(application.process_update(update), asyncio.get_event_loop())
     return "OK", 200
 
-# --- BOT CONFIGURATION ---
-API_TOKEN = "8951596090:AAEfuOu7a172jkgNCOrqhLsCfMtJwcy9A34"
+# --- BOT LOGIC ---
+API_TOKEN = "8951596090:AAFeX3jht3Yjm_v26CgUsHmiz0MVK-2-nPg"
+# Render ka apna URL automatic utha lega, ya aap apna URL manually bhi daal sakte hain
+RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', 'https://your-render-app-name.onrender.com')
+
 db = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 **Welcome Back, Anmol Bhai!**\n\n"
-        "⚡ **Render Premium Engine Active 24/7!**\n"
-        "Mujhe kisi bhi video/music ka link bhejein, network block bypass systems se instant processing hogi."
+        "⚡ **Render Webhook High-Speed Engine Active!**\n"
+        "Ab bot bina kisi delay ke 24/7 instant response karega. Mujhe koi bhi link bhejein!"
     )
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -67,7 +74,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     download_success = False
     title = "Premium Media"
 
-    # --- LAYER 1: TRY CLOUD PROXY API FIRST (Bypasses Render Blocked IP) ---
     if requests is not None:
         try:
             if "spotify" in url.lower():
@@ -88,9 +94,8 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if os.path.exists(filename) and os.path.getsize(filename) > 0:
                     download_success = True
         except Exception as api_err:
-            print(f"Cloud Proxy Bypass failed, switching to local backup: {api_err}")
+            print(f"Proxy failed: {api_err}")
 
-    # --- LAYER 2: LOCAL YT-DLP BACKUP (Runs if API fails) ---
     if not download_success:
         ydl_opts = {
             'format': 'best[ext=mp4]/best' if choice == "mp4" else 'bestaudio/best',
@@ -104,73 +109,60 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'preferredcodec': 'mp3',
                 'preferredquality': '320',
             }]
-
         try:
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 title = info.get('title', 'Media File')
                 raw_filename = ydl.prepare_filename(info)
                 filename = os.path.splitext(raw_filename)[0] + ".mp3" if choice == "mp3" else raw_filename
-                
-            if filename and os.path.exists(filename):
                 download_success = True
         except Exception as ytdl_err:
-            print(f"Local backup engine also failed: {ytdl_err}")
+            print(f"Backup failed: {ytdl_err}")
 
-    # --- UPLOAD AND CLEANUP LAYER ---
     try:
         if download_success and filename and os.path.exists(filename):
-            try:
-                await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text="📤 Uploading to Telegram...")
-            except Exception:
-                pass
-            
             with open(filename, 'rb') as file_asset:
                 if choice == "mp4":
                     await context.bot.send_video(chat_id=chat_id, video=file_asset, caption=f"🎬 {title}\n⚡ @Anmol_Bot", read_timeout=60, write_timeout=120)
                 else:
                     await context.bot.send_audio(chat_id=chat_id, audio=file_asset, title=title, caption=f"🎵 {title}\n⚡ @Anmol_Bot", read_timeout=60, write_timeout=120)
-
             if os.path.exists(filename):
                 os.remove(filename)
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
-            except Exception:
-                pass
+            await context.bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
         else:
-            raise Exception("All download routing paths exhausted.")
-            
-    except Exception as final_err:
+            raise Exception("Failed")
+    except Exception:
         try:
-            await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text="❌ Server completely busy or link restricted. Please thodi der baad dobara koshish karein.")
+            await context.bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text="❌ Server busy ya link restricted hai. Koshish karte rahein.")
         except Exception:
-            await context.bot.send_message(chat_id=chat_id, text="❌ Server completely busy or link restricted. Please thodi der baad dobara koshish karein.")
+            pass
 
     if user_id in db:
         del db[user_id]
 
-# Telegram Bot loop ko alag thread me chalane ka engine
-def run_bot():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    print("🚀 Initializing Telegram Polling Network...")
-    application = Application.builder().token(API_TOKEN).read_timeout(60).write_timeout(120).build()
+# Webhook initialization logic
+def init_application():
+    global application
+    # Event loop setup for webhook handling
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
 
+    application = Application.builder().token(API_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
     application.add_handler(CallbackQueryHandler(button_click))
-
-    print("✅ Telegram Polling Engine Started Successfully.")
-    application.run_polling(close_loop=False)
+    
+    # Init application engine inside memory
+    asyncio.get_event_loop().run_until_complete(application.initialize())
+    
+    # Telegram ko batana ki is Render URL par saare messages bhejo
+    webhook_url = f"{RENDER_URL.rstrip('/')}/webhook"
+    asyncio.get_event_loop().run_until_complete(application.bot.set_webhook(url=webhook_url))
+    print(f"✅ Webhook successfully connected to: {webhook_url}")
 
 if __name__ == '__main__':
-    # Bot ko background thread me start karein
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
-    
-    # Main process me Flask server ko run karein taaki Render ise continuously live rakhe
+    init_application()
     port = int(os.environ.get('PORT', 8080))
-    print(f"⚙️ Starting Main Flask Web Server on port {port}...")
     app.run(host='0.0.0.0', port=port)
-    
